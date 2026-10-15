@@ -1,0 +1,76 @@
+name: Release
+
+# Push a tag (v1.2.0) or run manually with the version. Builds the release and debug firmware, signs both with the
+# project key and publishes them (see package.py for the files). The Windows app downloads AppleRemoteEsp32.bin from
+# the latest release at build time.
+#
+# The key comes from the OTA_SIGNING_KEY secret of the "release" environment (PEM content): protect that environment
+# with a required reviewer and restrict it to v* tags, so the key is only exposed to an approved release run.
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag, e.g. v1.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      TAG: ${{ github.event.inputs.version || github.ref_name }}
+      # Public fingerprint of the project key (README, "Signing key"): refuses to sign with any other key.
+      KEY_FINGERPRINT: 4b8547045f39a213e8d81a3e28bb70ff0cbfa1b6bc8d45de1d241506b474046d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'dependencies.lock') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Check the version
+        run: |
+          version=$(sed -n 's/^CONFIG_APP_PROJECT_VER="\(.*\)"/\1/p' sdkconfig.defaults)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::sdkconfig.defaults says $version, the tag is $TAG"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Install the signing key
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$OTA_SIGNING_KEY" > ota_signing_key.pem
+          fingerprint=$(openssl rsa -in ota_signing_key.pem -pubout 2>/dev/null | openssl dgst -sha256 | awk '{print $NF}')
+          if [ "$fingerprint" != "$KEY_FINGERPRINT" ]; then
+            echo "::error::OTA_SIGNING_KEY is missing or is not the project key"
+            exit 1
+          fi
+      - name: Build and sign (release + debug)
+        # Retried once: PlatformIO's first ESP-IDF build of an environment sometimes races in ldgen.
+        run: pio run -e xiao_esp32s3 -e xiao_esp32s3_debug || pio run -e xiao_esp32s3 -e xiao_esp32s3_debug
+      - name: Verify the signatures with the project key
+        run: |
+          for env in xiao_esp32s3 xiao_esp32s3_debug; do
+            python ~/.platformio/packages/tool-esptoolpy/espsecure.py verify_signature --version 2 \
+              --keyfile ota_signing_key.pem ".pio/build/$env/firmware.bin"
+          done
+      - name: Remove the signing key
+        if: always()
+        run: rm -f ota_signing_key.pem
+      - name: Package
+        run: python package.py "$VERSION"
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --target "$GITHUB_SHA"

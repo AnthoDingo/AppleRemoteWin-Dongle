@@ -1,0 +1,21 @@
+# ESP-IDF
+build/
+build-debug/
+managed_components/
+sdkconfig
+sdkconfig.old
+
+# PlatformIO (generates sdkconfig.<env>; sdkconfig.defaults stays tracked)
+.pio/
+sdkconfig.*
+!sdkconfig.defaults
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+
+# Release packaging
+dist/
+
+# Signing keys: NEVER commit them (README, "Signing key")
+*.pem

@@ -1,0 +1,37 @@
+name: Build
+
+# Checks that both firmware builds compile. Signed with a throwaway key generated for the run, never the project key:
+# these images are refused by every real dongle, so they are not uploaded.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'dependencies.lock') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Throwaway signing key
+        run: openssl genrsa -out ota_signing_key.pem 3072
+      - name: Build (release + debug)
+        # Retried once: PlatformIO's first ESP-IDF build of an environment sometimes races in ldgen.
+        run: pio run -e xiao_esp32s3 -e xiao_esp32s3_debug || pio run -e xiao_esp32s3 -e xiao_esp32s3_debug
+      - name: Package (checks signature and version)
+        run: python package.py "$(sed -n 's/^CONFIG_APP_PROJECT_VER="\(.*\)"/\1/p' sdkconfig.defaults)"
+      - name: Remove the throwaway key
+        if: always()
+        run: rm -f ota_signing_key.pem
