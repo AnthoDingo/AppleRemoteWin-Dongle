@@ -12,6 +12,24 @@ reads it as a plain HID device and drives it.
 
 Target board: Seeed XIAO ESP32S3 (any ESP32-S3 with its native USB and ≥ 4 MB of flash works).
 
+## Case (3D printing)
+
+`hardware/`: OpenSCAD case for the XIAO ESP32S3 (non-Sense, no pin headers), tray + lid, with ready-to-print STL files.
+All versions share the geometry and parameters of `xiao-esp32s3-case.scad` (measure your board with calipers and adjust
+them there); the other `.scad` files only pick a variant.
+
+| Variant | Lid | Inside | Files |
+|---|---|---|---|
+| default | snap (press fit) | board + FPC antenna | `xiao-esp32s3-case`, `-tray.stl`, `-lid.stl` |
+| slide | slides in L slots | board + FPC antenna | `xiao-esp32s3-case-slide` |
+| compact | snap | board only | `xiao-esp32s3-case-compact` |
+| compact SMA | snap | board only, RP-SMA bulkhead (external antenna, U.FL pigtail) | `xiao-esp32s3-case-compact-sma` |
+| slide compact | slide | board only | `xiao-esp32s3-case-slide-compact` |
+| slide compact SMA | slide | board only, RP-SMA bulkhead | `xiao-esp32s3-case-slide-compact-sma` |
+
+Print: PLA or PETG, 0.2 mm layers, no supports. The lid has 1.8 mm holes above BOOT and RESET: press them with a pin
+(BOOT while plugging in for a cable flash, see "Build").
+
 ## USB protocol
 
 Mirrored in the app: `src/AppleRemote.Windows/EspDongle.cs` and `src/AppleRemote.Core/FirmwareImage.cs` of AppleRemoteWin.
