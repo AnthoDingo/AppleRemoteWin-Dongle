@@ -109,11 +109,15 @@ the key, then publishes (`package.py`):
 
 One-time setup of the key on GitHub (Settings > Environments):
 
-1. Create the environment **`release`**: required reviewer = you, deployment branches and tags = `v*` tags only.
-2. Add the environment secret **`OTA_SIGNING_KEY`** with the content of `ota_signing_key.pem`, for instance:
+1. Environment **`release`**: required reviewer = you; deployment branches and tags = selected, tag rule `v*` only.
+2. Its secret **`OTA_SIGNING_KEY`**, from the key file (never typed or pasted at gh's prompt: it keeps only the first
+   line). PowerShell:
    ```
-   gh secret set OTA_SIGNING_KEY --env release --repo AnthoDingo/AppleRemoteWin-Dongle < ota_signing_key.pem
+   Get-Content -Raw ota_signing_key.pem | gh secret set OTA_SIGNING_KEY --env release --repo AnthoDingo/AppleRemoteWin-Dongle
    ```
+   Not a repository secret: every workflow could read it, not just the approved release.
+
+Run a release again (after a failure) from the tag's run (Re-run jobs), or Actions > Release > Run workflow on the tag.
 The workflow refuses any secret whose public fingerprint is not the project's (below), and only runs the build after
 your approval. The Windows app downloads `releases/latest/download/AppleRemoteEsp32.bin` anonymously: this repository
 must be **public** for that (like AppleRemoteWin-Driver).

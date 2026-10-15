@@ -1,19 +1,15 @@
 name: Release
 
-# Push a tag (v1.2.0) or run manually with the version. Builds the release and debug firmware, signs both with the
-# project key and publishes them (see package.py for the files). The Windows app downloads AppleRemoteEsp32.bin from
-# the latest release at build time.
+# Push a tag (v1.2.0), or run it by hand on that tag (Actions > Release > Run workflow > Use workflow from: Tags > v1.2.0).
+# Builds the release and debug firmware, signs both with the project key and publishes them (see package.py for the
+# files). The Windows app downloads AppleRemoteEsp32.bin from the latest release at build time.
 #
-# The key comes from the OTA_SIGNING_KEY secret of the "release" environment (PEM content): protect that environment
-# with a required reviewer and restrict it to v* tags, so the key is only exposed to an approved release run.
+# The key comes from the OTA_SIGNING_KEY secret of the "release" environment (PEM content, README "Releases"): that
+# environment requires a reviewer and only accepts v* tags, so the key is only exposed to an approved release run.
 on:
   push:
     tags: ["v[0-9]*"]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Tag, e.g. v1.2.0"
-        required: true
 
 permissions:
   contents: write
@@ -23,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     env:
-      TAG: ${{ github.event.inputs.version || github.ref_name }}
+      TAG: ${{ github.ref_name }}
       # Public fingerprint of the project key (README, "Signing key"): refuses to sign with any other key.
       KEY_FINGERPRINT: 4b8547045f39a213e8d81a3e28bb70ff0cbfa1b6bc8d45de1d241506b474046d
     steps:
@@ -39,6 +35,10 @@ jobs:
         run: pip install platformio
       - name: Check the version
         run: |
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "::error::Run the release on a tag (Use workflow from: Tags > v…), not on a branch"
+            exit 1
+          fi
           version=$(sed -n 's/^CONFIG_APP_PROJECT_VER="\(.*\)"/\1/p' sdkconfig.defaults)
           if [ "v$version" != "$TAG" ]; then
             echo "::error::sdkconfig.defaults says $version, the tag is $TAG"
@@ -50,10 +50,16 @@ jobs:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
           umask 077
-          printf '%s\n' "$OTA_SIGNING_KEY" > ota_signing_key.pem
+          printf '%s\n' "$OTA_SIGNING_KEY" | tr -d '\r' > ota_signing_key.pem
+          if [ ! -s ota_signing_key.pem ] || ! openssl rsa -in ota_signing_key.pem -noout 2>/dev/null; then
+            # Typical cause: secret pasted at gh's prompt, which keeps only the first line (README, "Releases")
+            echo "::error::OTA_SIGNING_KEY is missing or is not a readable PEM private key ($(wc -l < ota_signing_key.pem) lines)"
+            exit 1
+          fi
           fingerprint=$(openssl rsa -in ota_signing_key.pem -pubout 2>/dev/null | openssl dgst -sha256 | awk '{print $NF}')
           if [ "$fingerprint" != "$KEY_FINGERPRINT" ]; then
-            echo "::error::OTA_SIGNING_KEY is missing or is not the project key"
+            # The public fingerprint reveals nothing about the private key
+            echo "::error::OTA_SIGNING_KEY is a private key, but not the project's one (public fingerprint $fingerprint)"
             exit 1
           fi
       - name: Build and sign (release + debug)
