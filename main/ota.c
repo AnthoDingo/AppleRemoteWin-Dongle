@@ -20,7 +20,7 @@
 #error "USB update requires CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE"
 #endif
 
-// Protocol mirrored in src/AppleRemote.Windows/EspDongle.cs
+// Protocol mirrored in AppleRemoteWin: src/AppleRemote.Windows/EspDongle.cs
 enum { OP_BEGIN = 1, OP_DATA = 2, OP_END = 3, OP_ABORT = 4 };
 enum {
     ST_IDLE = 0, ST_RECEIVING = 1, ST_VERIFYING = 2, ST_DONE = 3,

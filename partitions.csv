@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 AnthoDingo
+# Two OTA slots + factory (ESP-IDF's partitions_two_ota.csv), shared by idf.py and PlatformIO.
+# Each app slot is 1 MB: board_upload.maximum_size and the app's FirmwareImage.MaxSize follow it.
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x4000
+otadata,  data, ota,     0xd000,   0x2000
+phy_init, data, phy,     0xf000,   0x1000
+factory,  app,  factory, 0x10000,  1M
+ota_0,    app,  ota_0,   ,         1M
+ota_1,    app,  ota_1,   ,         1M

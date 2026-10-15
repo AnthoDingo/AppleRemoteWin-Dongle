@@ -12,6 +12,10 @@
 #include "nvs_flash.h"
 #include "tinyusb.h"
 #include "class/hid/hid_device.h"
+#ifdef APPLEREMOTE_USB_LOG
+#include "tusb_cdc_acm.h"
+#include "tusb_console.h"
+#endif
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -34,7 +38,7 @@ static const char *TAG = "appleremote";
 #define UNLOCK_VALUE     0xAF
 #define REPORT_MAX       20     // ATT MTU 23 - 3: the remote never sends more in one notification
 
-// ---- USB protocol (mirrored in src/AppleRemote.Windows/EspDongle.cs) ------------------------
+// ---- USB protocol (mirrored in AppleRemoteWin: src/AppleRemote.Windows/EspDongle.cs) ----------
 #define USB_REPORT_REMOTE  1    // in:  [remote report ID, 20 bytes zero-padded]
 #define USB_REPORT_STATE   2    // in:  [state, battery %, last disconnect reason]
 #define USB_REPORT_COMMAND 3    // feature (out): [command]
@@ -66,13 +70,28 @@ static const uint8_t hid_report_descriptor[] = {
     0xC0,
 };
 
+// Debug build (APPLEREMOTE_USB_LOG, PlatformIO env xiao_esp32s3_debug): a CDC serial port next to the HID collection
+// carries the logs. Never in the shipped firmware. Own PID: Windows caches the interface layout per VID/PID.
+#ifdef APPLEREMOTE_USB_LOG
+#define USB_PID 0x8A53
+#define USB_PRODUCT "AppleRemote ESP32-S3 (debug)"
+#else
+#define USB_PID 0x8A52
+#define USB_PRODUCT "AppleRemote ESP32-S3"
+#endif
+
 static const tusb_desc_device_t device_descriptor = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0200,
+#ifdef APPLEREMOTE_USB_LOG
+    .bDeviceClass = TUSB_CLASS_MISC,   // composite with an interface association (CDC)
+    .bDeviceSubClass = MISC_SUBCLASS_COMMON,
+    .bDeviceProtocol = MISC_PROTOCOL_IAD,
+#endif
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = 0x303A,      // Espressif; the app matches VID + usage page, not the PID
-    .idProduct = 0x8A52,     // ponytail: unregistered test PID, request one from Espressif before distributing
+    .idProduct = USB_PID,    // ponytail: unregistered test PIDs, request one from Espressif before distributing
     .bcdDevice = 0x0100,
     .iManufacturer = 1,
     .iProduct = 2,
@@ -83,15 +102,25 @@ static const tusb_desc_device_t device_descriptor = {
 static const char *string_descriptors[] = {
     (const char[]){0x09, 0x04},  // English
     "AnthoDingo",
-    "AppleRemote ESP32-S3",
+    USB_PRODUCT,
     "000001",
     "AppleRemote control",
+    "AppleRemote log",
 };
 
+#ifdef APPLEREMOTE_USB_LOG
+#define INTERFACE_COUNT 3
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+#else
+#define INTERFACE_COUNT 1
 #define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
+#endif
 static const uint8_t configuration_descriptor[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, CONFIG_TOTAL_LEN, 0, 100),
+    TUD_CONFIG_DESCRIPTOR(1, INTERFACE_COUNT, 0, CONFIG_TOTAL_LEN, 0, 100),
     TUD_HID_DESCRIPTOR(0, 4, HID_ITF_PROTOCOL_NONE, sizeof(hid_report_descriptor), 0x81, 32, 1),
+#ifdef APPLEREMOTE_USB_LOG
+    TUD_CDC_DESCRIPTOR(1, 5, 0x82, 8, 0x03, 0x83, 64),   // interfaces 1-2: notification IN, data OUT/IN
+#endif
 };
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) { return hid_report_descriptor; }
@@ -319,6 +348,13 @@ void app_main(void)
         .configuration_descriptor = configuration_descriptor,
     };
     ESP_ERROR_CHECK(tinyusb_driver_install(&usb));
+#ifdef APPLEREMOTE_USB_LOG
+    // From here on, stdout (ESP_LOG) goes to the USB serial port; earlier boot messages stay on UART0.
+    const tinyusb_config_cdcacm_t cdc = {.usb_dev = TINYUSB_USBDEV_0, .cdc_port = TINYUSB_CDC_ACM_0};
+    ESP_ERROR_CHECK(tusb_cdc_acm_init(&cdc));
+    ESP_ERROR_CHECK(esp_tusb_init_console(TINYUSB_CDC_ACM_0));
+    ESP_LOGW(TAG, "debug build: logs on the USB serial port");
+#endif
 
     ESP_ERROR_CHECK(nimble_port_init());
     ble_hs_cfg.sync_cb = on_sync;
