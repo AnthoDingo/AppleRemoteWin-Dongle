@@ -20,8 +20,9 @@ jobs:
     environment: release
     env:
       TAG: ${{ github.ref_name }}
-      # Public fingerprint of the project key (README, "Signing key"): refuses to sign with any other key.
-      KEY_FINGERPRINT: 4b8547045f39a213e8d81a3e28bb70ff0cbfa1b6bc8d45de1d241506b474046d
+      # Public fingerprint of the project key (README, "Signing key"): SHA-256 of the DER public key, the same on every
+      # OS (a PEM's hash depends on its line endings). Refuses to sign with any other key.
+      KEY_FINGERPRINT: aaf07e29f7effd155b59586e6b3f5771283747e3d692092c12bd617a6c73b294
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,7 +57,7 @@ jobs:
             echo "::error::OTA_SIGNING_KEY is missing or is not a readable PEM private key ($(wc -l < ota_signing_key.pem) lines)"
             exit 1
           fi
-          fingerprint=$(openssl rsa -in ota_signing_key.pem -pubout 2>/dev/null | openssl dgst -sha256 | awk '{print $NF}')
+          fingerprint=$(openssl rsa -in ota_signing_key.pem -pubout -outform DER 2>/dev/null | openssl dgst -sha256 | awk '{print $NF}')
           if [ "$fingerprint" != "$KEY_FINGERPRINT" ]; then
             # The public fingerprint reveals nothing about the private key
             echo "::error::OTA_SIGNING_KEY is a private key, but not the project's one (public fingerprint $fingerprint)"

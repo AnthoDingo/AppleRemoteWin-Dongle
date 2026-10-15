@@ -150,17 +150,20 @@ Generated once (OpenSSL ships with Git for Windows: `C:\Program Files\Git\mingw6
 openssl genrsa -out ota_signing_key.pem 3072
 ```
 
-Project key, public fingerprint (SHA-256 of the PEM public key; not secret):
+Project key, public fingerprint (SHA-256 of the public key in DER form; not secret, the same on every OS):
 
 ```
-4b8547045f39a213e8d81a3e28bb70ff0cbfa1b6bc8d45de1d241506b474046d
+aaf07e29f7effd155b59586e6b3f5771283747e3d692092c12bd617a6c73b294
 ```
 
 Check that a key file is the project's one:
 
 ```
-openssl rsa -in ota_signing_key.pem -pubout | openssl dgst -sha256
+openssl rsa -in ota_signing_key.pem -pubout -outform DER | openssl dgst -sha256
 ```
+
+Not the hash of the PEM text: it changes with the line endings (`4b8547…046d` on Windows, `de21b3…3e82` on Linux for
+this same key).
 
 - At the root of this repository (path set by `CONFIG_SECURE_BOOT_SIGNING_KEY`); `*.pem` is ignored by git. **Never commit it.**
 - Keep an offline backup (password manager, encrypted USB key). Lost key: dongles in the field can no longer be
